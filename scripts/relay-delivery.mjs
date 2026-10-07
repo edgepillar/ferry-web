@@ -159,6 +159,9 @@ const {useSession} = await import(
 const {useBoard} = await import(
   pathToFileURL(resolve(root, 'ui/src/core/composables/useBoard.ts')).href
 )
+const {RelayPool, RELAY_LIMITS} = await import(
+  pathToFileURL(resolve(root, 'ui/src/core/nostr.ts')).href,
+)
 const session = useSession()
 const board = useBoard()
 
@@ -294,6 +297,7 @@ test('a retired socket cannot deliver into the current session', async (t) => {
   goodbye.resolve()
   await flush()
   assert.equal(count, 1)
+  assert.equal(session.connected.value, 2, 'retired pool close cannot overwrite current relay status')
 })
 
 for (const [name, kind, count] of [
@@ -312,6 +316,199 @@ for (const [name, kind, count] of [
     assert.equal(count(), 1)
   })
 }
+
+test('oversized relay frames are refused before JSON parsing and surface in the session', async (t) => {
+  const sockets = await startSession(t)
+  const parse = JSON.parse
+  let parsed = false
+  const oversized = ' '.repeat(RELAY_LIMITS.frameBytes + 1)
+  JSON.parse = (text, ...args) => {
+    if (text === oversized) parsed = true
+    return parse(text, ...args)
+  }
+  try { sockets[0].onmessage?.({data: oversized}) } finally { JSON.parse = parse }
+  assert.equal(parsed, false)
+  assert.match(session.error.value, /larger than 256 KiB/)
+  assert.equal(session.connected.value, 0)
+})
+
+async function rawPool(t, handler) {
+  const before = Socket.all.length
+  const pool = new RelayPool(['wss://fixture.invalid'])
+  const errors = []
+  pool.open([{kinds: [30000]}], handler, undefined, (message) => errors.push(message))
+  await flush()
+  const socket = Socket.all[before]
+  t.after(() => pool.close())
+  return {pool, socket, errors}
+}
+
+test('verification concurrency is bounded and exact pending copies share work', async (t) => {
+  const pending = deferred()
+  let active = 0
+  let peak = 0
+  let calls = 0
+  let applied = 0
+  const {socket} = await rawPool(t, async (_ev, accept) => {
+    calls++
+    peak = Math.max(peak, ++active)
+    await pending.promise
+    if (accept()) applied++
+    active--
+  })
+  for (let id = 1; id <= 20; id++) {
+    socket.deliver(event(id))
+    socket.deliver(event(id))
+  }
+  assert.equal(calls, RELAY_LIMITS.concurrentEvents)
+  pending.resolve()
+  await flush()
+  assert.equal(peak, RELAY_LIMITS.concurrentEvents)
+  assert.equal(calls, 20)
+  assert.equal(applied, 20)
+})
+
+test('a verification flood closes the pool without accepting pending events', async (t) => {
+  const pending = deferred()
+  let applied = 0
+  let calls = 0
+  const {pool, socket, errors} = await rawPool(t, async (_ev, accept) => {
+    calls++
+    await pending.promise
+    if (accept()) applied++
+  })
+  for (let id = 1; id <= RELAY_LIMITS.queuedEvents + RELAY_LIMITS.concurrentEvents + 1; id++) {
+    socket.deliver(event(id))
+  }
+  assert.equal(calls, RELAY_LIMITS.concurrentEvents)
+  assert.equal(pool.connected, 0)
+  assert.match(errors[0], /verification queue is full/)
+  pending.resolve()
+  await flush()
+  assert.equal(applied, 0)
+  assert.equal(calls, RELAY_LIMITS.concurrentEvents)
+})
+
+test('queue byte capacity is enforced before the event-count capacity', async (t) => {
+  const pending = deferred()
+  let applied = 0
+  const {pool, socket, errors} = await rawPool(t, async (_ev, accept) => {
+    await pending.promise
+    if (accept()) applied++
+  })
+  for (let id = 1; id <= 100; id++) {
+    socket.deliver({...event(id), content: 'x'.repeat(200 * 1024)})
+  }
+  assert.equal(pool.connected, 0)
+  assert.match(errors[0], /verification queue is full/)
+  pending.resolve()
+  await flush()
+  assert.equal(applied, 0)
+})
+
+test('UTF-8 frame size is bounded even when the string character count is smaller', async (t) => {
+  const {pool, socket, errors} = await rawPool(t, () => assert.fail('oversized Unicode frame must not verify'))
+  socket.deliver({...event(1), content: '\u20ac'.repeat(100_000)})
+  assert.equal(pool.connected, 0)
+  assert.match(errors[0], /larger than 256 KiB/)
+})
+
+test('relay count and offline outgoing queue have explicit bounds', async (t) => {
+  assert.throws(() => new RelayPool(Array(RELAY_LIMITS.relays + 1).fill('wss://fixture.invalid')), /no more than/)
+  const pool = new RelayPool(['wss://fixture.invalid'])
+  t.after(() => pool.close())
+  for (let id = 1; id <= RELAY_LIMITS.outboundEvents; id++) pool.publish(event(id))
+  assert.throws(() => pool.publish(event(100)), /send queue is full/)
+  assert.throws(() => pool.publish(event(1)), /send queue is full/)
+})
+
+test('a failed opening flush preserves unsent messages for the next connection', async (t) => {
+  t.mock.timers.enable({apis: ['setTimeout']})
+  const before = Socket.all.length
+  const pool = new RelayPool(['wss://fixture.invalid'])
+  t.after(() => pool.close())
+  pool.publish(event(1))
+  pool.publish(event(2))
+  pool.open([{kinds: [30000]}], () => {})
+  const first = Socket.all[before]
+  const send = first.send.bind(first)
+  first.send = (payload) => {
+    if (JSON.parse(payload)[0] === 'EVENT') throw new Error('synthetic send failure')
+    send(payload)
+  }
+  await flush()
+  assert.equal(pool.connected, 0)
+  t.mock.timers.tick(4000)
+  await flush()
+  const next = Socket.all[before + 1]
+  assert.deepEqual(next.sent.filter((frame) => frame[0] === 'EVENT').map((frame) => frame[1].id),
+    [event(1).id, event(2).id])
+  assert.equal(pool.connected, 1)
+})
+
+test('accepted-ID capacity closes instead of forgetting IDs and allowing replay', async (t) => {
+  let applied = 0
+  const {pool, socket, errors} = await rawPool(t, (_ev, accept) => { if (accept()) applied++ })
+  for (let id = 1; id <= RELAY_LIMITS.acceptedEvents; id++) {
+    socket.deliver(event(id))
+    if (id % 100 === 0) await flush()
+  }
+  await flush()
+  assert.equal(applied, RELAY_LIMITS.acceptedEvents)
+  socket.deliver(event(1))
+  await flush()
+  assert.equal(applied, RELAY_LIMITS.acceptedEvents)
+  assert.equal(errors.length, 0)
+  socket.deliver(event(RELAY_LIMITS.acceptedEvents + 1))
+  await flush()
+  assert.equal(pool.connected, 0)
+  assert.match(errors[0], /verified-event limit/)
+  socket.deliver(event(1))
+  await flush()
+  assert.equal(applied, RELAY_LIMITS.acceptedEvents)
+})
+
+test('close discards queued verification and cancels reconnects', async (t) => {
+  t.mock.timers.enable({apis: ['setTimeout']})
+  const pending = deferred()
+  let calls = 0
+  let applied = 0
+  const {pool, socket} = await rawPool(t, async (_ev, accept) => {
+    calls++
+    await pending.promise
+    if (accept()) applied++
+  })
+  for (let id = 1; id <= 20; id++) socket.deliver(event(id))
+  socket.onclose?.()
+  const count = Socket.all.length
+  pool.close()
+  t.mock.timers.tick(10_000)
+  pending.resolve()
+  await flush()
+  assert.equal(Socket.all.length, count)
+  assert.equal(calls, RELAY_LIMITS.concurrentEvents)
+  assert.equal(applied, 0)
+})
+
+test('a handler that never settles closes on deadline without starting more handlers', async (t) => {
+  t.mock.timers.enable({apis: ['setTimeout']})
+  const pending = deferred()
+  let calls = 0
+  let applied = 0
+  const {pool, socket, errors} = await rawPool(t, async (_ev, accept) => {
+    calls++
+    await pending.promise
+    if (accept()) applied++
+  })
+  for (let id = 1; id <= 10; id++) socket.deliver(event(id))
+  t.mock.timers.tick(RELAY_LIMITS.handlerMs)
+  assert.match(errors[0], /did not finish within 60 seconds/)
+  assert.equal(pool.connected, 0)
+  assert.equal(calls, RELAY_LIMITS.concurrentEvents)
+  pending.resolve()
+  await flush()
+  assert.equal(applied, 0)
+})
 
 test('concurrent accepted takes update the inbox once', async (t) => {
   const sockets = await startBoard(t)

@@ -19,11 +19,14 @@
     "commands": "node --experimental-strip-types ../scripts/zenon-commands.mjs",
     "dates": "node --experimental-strip-types ../scripts/dates.mjs",
     "relay:delivery": "node --test ../scripts/relay-delivery.mjs",
-    "test": "cd ../wasm && go test ./... && cd ../ui && npm run wallet:provider && npm run commands && npm run dates && npm run relay:delivery && npm run smoke",
+    "test": "cd ../wasm && go test ./... && cd ../ui && npm run wallet:provider && npm run commands && npm run dates && npm run relay:delivery && npm run loader:test && npm run http:limits && npm run ws:limits && npm run smoke",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"**/*.{ts,vue,json,md}\""
+    "format": "prettier --write \"**/*.{ts,vue,json,md}\"",
+    "loader:test": "node --test ../scripts/wasm-loader.test.mjs",
+    "http:limits": "node ../scripts/http-limits.mjs",
+    "ws:limits": "node ../scripts/ws-limits.mjs"
   },
   "dependencies": {
     "@lucide/vue": "^1.20.0",

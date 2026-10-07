@@ -277,7 +277,12 @@ async function join(code?: string, attachTo?: string) {
         if (pool.value !== p) return
         return receive(ev, acceptEvent)
       },
-      () => (relays.value = p.status),
+      () => {
+        if (pool.value === p) relays.value = p.status
+      },
+      (message) => {
+        if (pool.value === p) error.value = message
+      },
     )
     relays.value = p.status
     // Announced after subscribing, never before: a hello published while we

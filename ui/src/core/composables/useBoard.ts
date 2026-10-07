@@ -402,7 +402,12 @@ async function start() {
         },
       ],
       (ev, acceptEvent) => receive(ev, kinds, acceptEvent),
-      () => (relays.value = p.status),
+      () => {
+        if (pool.value === p) relays.value = p.status
+      },
+      (message) => {
+        if (pool.value === p) error.value = message
+      },
     )
     relays.value = p.status
     reaper = setInterval(() => reap(), 30_000)

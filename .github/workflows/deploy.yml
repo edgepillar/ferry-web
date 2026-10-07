@@ -117,6 +117,10 @@ jobs:
         working-directory: ui
         run: npm run relay:delivery
 
+      - name: WASM loader checks
+        working-directory: ui
+        run: npm run loader:test
+
       # Development first, so the production build is what is left in
       # ui/public/ferry.wasm and dist/ when this job ends. Each smoke run
       # follows its own build and asserts the module reports the instance that
@@ -126,12 +130,16 @@ jobs:
         run: |
           npm run build:dev
           npm run smoke:dev -- ../dist-dev/ferry.wasm
+          npm run http:limits -- ../dist-dev/ferry.wasm
+          npm run ws:limits -- ../dist-dev/ferry.wasm
 
       - name: Build and smoke the production instance
         working-directory: ui
         run: |
           npm run build
           npm run smoke -- ../dist/ferry.wasm
+          npm run http:limits -- ../dist/ferry.wasm
+          npm run ws:limits -- ../dist/ferry.wasm
 
       # Downloadable rather than published: it is the build to serve locally
       # against a regtest node, and it should not sit on the origin that holds
