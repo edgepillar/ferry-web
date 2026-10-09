@@ -31,7 +31,7 @@
   "dependencies": {
     "@lucide/vue": "^1.20.0",
     "@vueuse/core": "^14.2.0",
-    "nom-ui": "github:digitalSloth/nom-ui",
+    "nom-ui": "github:digitalSloth/nom-ui#63f755a52cf6ee3665d3755755c506e3aa191bd4",
     "vue": "^3.4.0",
     "vue-router": "^4.2.0"
   },

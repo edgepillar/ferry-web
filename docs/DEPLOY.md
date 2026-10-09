@@ -11,7 +11,7 @@ npm run build          # → ../dist       the production instance
 npm run build:dev      # → ../dist-dev   the development instance
 ```
 
-Requires **Go 1.27+** and **Node 22+** on PATH. `--allow-git=all` is needed
+Requires **Go 1.27+** and **Node 24+** on PATH. `--allow-git=all` is needed
 because `nom-ui` is a GitHub dependency and npm 12 refuses git specs by default.
 
 ---
@@ -55,8 +55,9 @@ both from one variable.
 
 GitHub Pages serves **one site per repository**, so the two cannot both be
 published there. `.github/workflows/deploy.yml` builds and smoke-tests both on
-every run, publishes production, and uploads the development build as a
-downloadable artefact. To publish the development one instead, run the workflow
+every run and uploads the development build as a downloadable artefact. Pull
+requests validate without deploying; pushes publish production. To publish the
+development one instead, run the workflow
 by hand from the Actions tab and set the `instance` input to `dev` — this
 **replaces the production site at the same URL**, so it is a deliberate act and
 never something a push does.
@@ -70,14 +71,15 @@ Its own repository, subdomain or host removes that. See [SECURITY.md](SECURITY.m
 
 ## GitHub Pages
 
-`.github/workflows/deploy.yml` does this on every push to `main`, and can be run
-by hand from the Actions tab.
+`.github/workflows/deploy.yml` validates pull requests targeting `master`,
+publishes on every push to `master`, and can be run by hand from the Actions tab.
+Pull request runs validate both builds without publishing to Pages.
 
 One-time setup:
 
 1. **Settings → Pages → Source → GitHub Actions.** Not "Deploy from a branch" —
    the workflow publishes an artifact rather than committing to `gh-pages`.
-2. Push to `main`. The workflow runs the Go tests, vets both build targets,
+2. Push to `master`. The workflow runs the Go tests, vets both build targets,
    typechecks and lints the UI, builds, runs the smoke test **against the module
    it is about to publish**, and then deploys.
 
@@ -85,10 +87,9 @@ The site lands at `https://<user>.github.io/<repo>/`. No base-path configuration
 is needed: `base: './'` in the Vite config and hash routing mean the same build
 works under a repo subpath, at a domain root, or from a local folder.
 
-The workflow's push trigger is `main`. On a repository whose default branch is
-`master`, either rename the branch or add it to the `branches:` list — otherwise
-nothing publishes and the Actions tab shows no runs at all, which reads like a
-broken workflow rather than one that was never triggered.
+The workflow's push and pull request triggers target `master`, the repository's
+default branch. If a fork uses another branch, update its triggers deliberately
+before deploying.
 
 ### The one thing worth changing
 
