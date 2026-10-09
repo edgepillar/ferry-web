@@ -1,4 +1,4 @@
-name: Build and deploy
+name: Validate and deploy
 
 # The whole deployment: compile Go to WebAssembly, bundle the site around it,
 # hand GitHub Pages a directory of static files. There is no server to
@@ -17,6 +17,8 @@ name: Build and deploy
 # Actions tab — see docs/DEPLOY.md.
 
 on:
+  pull_request:
+    branches: [master]
   push:
     branches: [master]
   # So a deploy can be re-run without an empty commit, and so the development
@@ -24,22 +26,20 @@ on:
   workflow_dispatch:
     inputs:
       instance:
-        description: 'Which instance to publish to Pages'
+        description: "Which instance to publish to Pages"
         type: choice
         options: [prod, dev]
         default: prod
 
-# What Pages needs and nothing else. id-token is for the OIDC handshake
-# deploy-pages uses; there is no long-lived token anywhere.
+# Validation uses read-only repository access, including fork pull requests.
+# Only the deployment job receives Pages and OIDC write permissions.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Never two deploys at once, and never cancel one that is already publishing —
 # an interrupted deploy can leave the site half-updated.
 concurrency:
-  group: pages
+  group: ${{ github.event_name == 'pull_request' && format('checks-{0}', github.event.pull_request.number) || 'pages' }}
   cancel-in-progress: false
 
 jobs:
@@ -49,19 +49,19 @@ jobs:
       # A push publishes production. Only a hand-run dispatch can say otherwise.
       PUBLISH: ${{ github.event.inputs.instance || 'prod' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           # wasm_exec.js is copied out of whichever Go is installed here and
           # must match the compiler that produced ferry.wasm beside it. Pinning
           # the toolchain pins both.
-          go-version: '1.27'
+          go-version: "1.27.1"
           cache-dependency-path: wasm/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '24'
+          node-version: "24.19.0"
           cache: npm
           cache-dependency-path: ui/package-lock.json
 
@@ -75,7 +75,9 @@ jobs:
 
       - name: Go tests
         working-directory: wasm
-        run: go test ./...
+        run: |
+          go test ./...
+          go test -race ./...
 
       - name: Go vet, both targets
         working-directory: wasm
@@ -144,23 +146,30 @@ jobs:
       # Downloadable rather than published: it is the build to serve locally
       # against a regtest node, and it should not sit on the origin that holds
       # anyone's mainnet swap keys.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ferry-dev
           path: dist-dev
           retention-days: 14
 
       - name: Stage the instance being published
+        if: github.event_name != 'pull_request'
         run: |
           echo "publishing the $PUBLISH instance"
           test -d "$([ "$PUBLISH" = dev ] && echo dist-dev || echo dist)"
           echo "SITE=$([ "$PUBLISH" = dev ] && echo dist-dev || echo dist)" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-pages-artifact@v3
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: ${{ env.SITE }}
 
   deploy:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -168,4 +177,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
