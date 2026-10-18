@@ -17,7 +17,11 @@ const result = await build({
   root: ui,
   configFile: false,
   logLevel: 'error',
-  define: {__FERRY_ENV__: JSON.stringify('dev')},
+  // Library mode keeps process.env references unless they are defined explicitly.
+  define: {
+    __FERRY_ENV__: JSON.stringify('dev'),
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
   plugins: [{
     name: 'solana-provider-fixture',
     resolveId(id) { if (id === entry) return '\0' + entry },
