@@ -73,6 +73,10 @@ jobs:
           npm_config_allow_git: all
         run: npm ci
 
+      - name: Dependency audit
+        working-directory: ui
+        run: npm run audit:dependencies
+
       - name: Go tests
         working-directory: wasm
         run: |
@@ -96,6 +100,12 @@ jobs:
 
       # The extension boundary, against a stub provider. No chain, no browser
       # and no extension needed — which is why it can run here at all.
+      - name: Solana provider and lint configuration checks
+        working-directory: ui
+        run: |
+          npm run test:solana
+          npm run test:lint-config
+
       - name: Wallet provider checks
         working-directory: ui
         run: npm run wallet:provider
