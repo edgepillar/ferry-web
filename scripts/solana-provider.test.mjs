@@ -143,7 +143,10 @@ test('the lock removes vulnerable chains and scopes the reviewed RPC override', 
     assert.equal(Object.keys(lock.packages).some((p) => p.endsWith('/' + name)), false, name)
   }
   for (const [path, pkg] of Object.entries(lock.packages)) {
-    if (path.endsWith('/uuid')) assert.ok(Number(pkg.version.split('.')[0]) >= 11)
+    if (/(?:^|\/)node_modules\/uuid$/.test(path)) {
+      const [major, minor, patch] = pkg.version.split('.').map(Number)
+      assert.ok(major > 11 || (major === 11 && (minor > 1 || (minor === 1 && patch >= 1))), path)
+    }
   }
   assert.deepEqual(require('./package.json').overrides, {'@solana/web3.js': {jayson: '5.0.0'}})
 })

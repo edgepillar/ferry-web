@@ -59,6 +59,6 @@ test('TypeScript base rules also apply inside Vue scripts', async () => {
   assert.ok(messages.some((m) => m.ruleId === 'prefer-const' && m.severity === 2))
 })
 test('TypeScript base rules remain active in standalone TypeScript', async () => {
-  const messages = await lint('export let value: number = 1\n', 'fixture.ts')
+  const messages = await lint('export function read() { let value: number = 1; return value }\n', 'fixture.ts')
   assert.ok(messages.some((m) => m.ruleId === 'prefer-const' && m.severity === 2))
 })
