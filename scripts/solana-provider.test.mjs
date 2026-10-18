@@ -36,7 +36,10 @@ const result = await build({
     rollupOptions: {output: {inlineDynamicImports: true}},
   },
 })
-const bundle = new vm.Script(result.output.find((o) => o.type === 'chunk' && o.isEntry).code)
+const outputs = Array.isArray(result) ? result : [result]
+const chunks = outputs.flatMap((output) => output.output).filter((o) => o.type === 'chunk')
+assert.equal(chunks.length, 1, 'the browser fixture must be one self-contained IIFE')
+const bundle = new vm.Script(chunks[0].code)
 const endpoint = 'https://fixture.invalid/solana'
 const blockhash = '11111111111111111111111111111111'
 const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
