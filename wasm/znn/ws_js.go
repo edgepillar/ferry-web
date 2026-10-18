@@ -314,6 +314,7 @@ func (c *wsConn) fail(err error) {
 func (c *wsConn) close() {
 	c.mu.Lock()
 	sock, funcs := c.sock, c.funcs
+	c.sock = js.Undefined()
 	c.funcs = nil
 	c.open = false
 	c.mu.Unlock()

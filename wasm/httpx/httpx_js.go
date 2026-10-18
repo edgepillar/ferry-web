@@ -44,9 +44,8 @@ func do(ctx context.Context, req Request) (*Response, error) {
 
 	opts := map[string]any{
 		"method": req.Method,
-		// Explicit rather than relying on the defaults: no cookies, no
-		// credentials, no redirect chasing that could land the request on a
-		// different origin than the one the user named in settings.
+		// Omit ambient credentials and apply Fetch's CORS checks. Redirects
+		// can reach another CORS-enabled origin; they are followed explicitly.
 		"credentials": "omit",
 		"mode":        "cors",
 		"redirect":    "follow",
