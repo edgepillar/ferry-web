@@ -13,7 +13,13 @@ export default defineConfig(
   {
     name: 'app/files-to-lint',
     files: ['**/*.{ts,mts,tsx,vue}'],
-    extends: [tseslint.configs.recommended, pluginVue.configs['flat/essential']],
+    extends: [
+      ...tseslint.configs.recommended.map((config) => ({
+        ...config,
+        files: ['**/*.{ts,mts,tsx,vue}'],
+      })),
+      pluginVue.configs['flat/essential'],
+    ],
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,

@@ -50,3 +50,15 @@ test('Vue scripts must still declare TypeScript', async () => {
 test('generated Go runtime files remain ignored', async () => {
   assert.equal(await eslint.isPathIgnored(resolve(ui, 'public/wasm_exec.js')), true)
 })
+
+test('TypeScript base rules also apply inside Vue scripts', async () => {
+  const messages = await lint(
+    '<script setup lang="ts">let value: number = 1</script><template>{{ value }}</template>',
+    'Fixture.vue',
+  )
+  assert.ok(messages.some((m) => m.ruleId === 'prefer-const' && m.severity === 2))
+})
+test('TypeScript base rules remain active in standalone TypeScript', async () => {
+  const messages = await lint('export let value: number = 1\n', 'fixture.ts')
+  assert.ok(messages.some((m) => m.ruleId === 'prefer-const' && m.severity === 2))
+})

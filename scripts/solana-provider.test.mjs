@@ -12,7 +12,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const ui = resolve(root, 'ui')
 const require = createRequire(resolve(ui, 'package.json'))
 const {build} = await import(pathToFileURL(require.resolve('vite')).href)
-const entry = 'ferry:solana-provider-fixture'
+const entry = resolve(ui, 'solana-provider.fixture.ts')
 const result = await build({
   root: ui,
   configFile: false,
