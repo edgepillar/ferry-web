@@ -5,6 +5,19 @@ The UI uses a committed npm lockfile. Run `npm ci` from `ui/`, then
 `npm run test:lint-config`, `npm run typecheck`, and `npm run lint`.
 CI also builds and smoke-tests both application instances.
 
+## Vite development server security
+
+The declared minimum and committed Vite version are 7.3.7. This patch is listed
+as a fixed version for the conditional development-server issues described in
+[GHSA-rq7h-c2jc-7f22](https://github.com/vitejs/vite/security/advisories/GHSA-rq7h-c2jc-7f22),
+[GHSA-9jrq-w75r-8gcw](https://github.com/vitejs/vite/security/advisories/GHSA-9jrq-w75r-8gcw)
+and [GHSA-587h-7wmj-h5pm](https://github.com/vitejs/launch-editor/security/advisories/GHSA-587h-7wmj-h5pm).
+The Node engine range is unchanged. The lockfile also records optional bundled
+WASI metadata under the unchanged Tailwind Oxide package. These records do not
+upgrade another existing dependency. Re-run the locked install, audits, browser
+fixtures and both builds whenever this dependency tree changes. These upstream
+advisories do not establish an incident in the deployed static site.
+
 ## Solana RPC compatibility
 
 The application retains the legacy class-based transaction API on the maintained
